@@ -11,11 +11,6 @@
 #include "lock_client.h"
 #include "rpc.h"
 
-typedef struct {
-    int status;
-    pthread_cond_t cond;
-}lock_stat;
-
 class lock_server {
 
  protected:
@@ -29,10 +24,9 @@ class lock_server {
   lock_protocol::status release(int clt, lock_protocol::lockid_t lid, int &);
 
  private:
-  std::map<lock_protocol::lockid_t, lock_stat*> lck_stat_map;
+  std::map<lock_protocol::lockid_t, int> lck_stat_map;
   pthread_mutex_t stat_mutex;
-  lock_stat *create_lock_stat(lock_protocol::lockid_t lid);
-  int acquire(lock_stat *lst);
+    pthread_cond_t stat_cond;
 };
 
 #endif 
