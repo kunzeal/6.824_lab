@@ -105,7 +105,6 @@ lock_server::release(int clt, lock_protocol::lockid_t lid, int &r) {
   }
   else//valid, so release
   {
-    printf("relase %lld\n", lid);
     nacquire--;
     it->second->status=0;
     pthread_cond_signal(&it->second->cond);
@@ -117,7 +116,6 @@ lock_server::release(int clt, lock_protocol::lockid_t lid, int &r) {
 }
 
 lock_server::~lock_server() {
-  printf("deconstruct\n");
   /* destroy all status and its condition variables */
   map<lock_protocol::lockid_t, lock_stat*>::iterator it;
   for(it=lck_stat_map.end();it!=lck_stat_map.end();it++)
