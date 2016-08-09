@@ -662,8 +662,49 @@ rpcs::checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
 {
 	ScopedLock rwl(&reply_window_m_);
 
+	rpcs::rpcstate_t ret=NEW;
+
+	std::map<unsigned  int, std::list<reply_t> >::iterator it=reply_window_.find(clt_nonce);
+
+    //recognize ctl
+    std::list<reply_t>::iterator lit;
+
+    long long max_xid=-1, min_xid=9999999999;
+    //scan all request of clt_nonce
+    for(lit=it->second.begin();lit!=it->second.end();lit++)
+    {
+        if(lit->xid>max_xid)max_xid=lit->xid;
+
+        if(lit->xid<min_xid)min_xid=lit->xid;
+
+        if(lit->xid<=xid_rep)
+        {
+			free(lit->buf);
+            it->second.erase(lit);
+        }
+
+        if(xid==lit->xid)
+        {
+            if(lit->cb_present)
+                ret=DONE;
+            else
+                ret=INPROGRESS;
+        }
+    }
+
+    if(min_xid>xid)
+    {
+        ret=FORGOTTEN;
+    }
+    if(max_xid<xid)
+    {
+        //new
+        it->second.push_back(reply_t(xid));
+        ret=NEW;
+    }
+
         // You fill this in for Lab 1.
-	return NEW;
+	return ret;
 }
 
 // rpcs::dispatch calls add_reply when it is sending a reply to an RPC,
@@ -677,6 +718,22 @@ rpcs::add_reply(unsigned int clt_nonce, unsigned int xid,
 {
 	ScopedLock rwl(&reply_window_m_);
         // You fill this in for Lab 1.
+	std::map<unsigned int, std::list<reply_t> >::iterator it;
+	it=reply_window_.find(clt_nonce);
+	if(it!=reply_window_.end())
+	{
+		std::list<reply_t>::iterator lit;
+		//find xid node
+		for(lit=it->second.begin();lit!=it->second.end();lit++)
+			if(lit->xid==xid) break;
+
+		if(lit!=it->second.end())
+		{
+			lit->cb_present=true;
+			lit->buf=b;
+			lit->sz=sz;
+		}
+	}
 }
 
 void
