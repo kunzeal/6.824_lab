@@ -18,6 +18,7 @@
 #include "lang/verify.h"
 #include "yfs_client.h"
 
+
 int myid;
 yfs_client *yfs;
 
