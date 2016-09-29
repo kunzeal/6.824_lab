@@ -582,8 +582,14 @@ rpcs::dispatch(djob_t *j)
 		stat = NEW;
 	}
 
+	jsl_log(JSL_DBG_2,
+			"------------------------------------------------------------");
+
 	switch (stat){
 		case NEW: // new request
+			jsl_log(JSL_DBG_2,
+					"NEW!!: rpc %u (proc %x, last_rep %u) from clt %u for srv instance %u \n",
+					h.xid, proc, h.xid_rep, h.clt_nonce, h.srv_nonce);
 			if(counting_){
 				updatestat(proc);
 			}
@@ -627,8 +633,14 @@ rpcs::dispatch(djob_t *j)
 			}
 			break;
 		case INPROGRESS: // server is working on this request
+			jsl_log(JSL_DBG_2,
+					"INPROGRESS!!: rpc %u (proc %x, last_rep %u) from clt %u for srv instance %u \n",
+					h.xid, proc, h.xid_rep, h.clt_nonce, h.srv_nonce);
 			break;
 		case DONE: // duplicate and we still have the response
+			jsl_log(JSL_DBG_2,
+					"DONE!!: rpc %u (proc %x, last_rep %u) from clt %u for srv instance %u \n",
+					h.xid, proc, h.xid_rep, h.clt_nonce, h.srv_nonce);
 			c->send(b1, sz1);
 			break;
 		case FORGOTTEN: // very old request and we don't have the response anymore
@@ -662,8 +674,65 @@ rpcs::checkduplicate_and_update(unsigned int clt_nonce, unsigned int xid,
 {
 	ScopedLock rwl(&reply_window_m_);
 
+	rpcs::rpcstate_t ret=NEW;
+
+	std::map<unsigned int, int>::iterator rep_it;
+	if((rep_it=last_rep_.find(clt_nonce))!=last_rep_.end())
+	{
+		if(rep_it->second<xid_rep)
+			rep_it->second=xid_rep;//update last_rep
+		else if(xid<=rep_it->second)
+		{
+			//forgot
+			ret=FORGOTTEN;
+			return ret;
+		}
+		//else in normal way, check all reps below
+	}
+	else
+		last_rep_[clt_nonce]=xid_rep;
+
+	//in dispatch, the clt has been checked, so it must be found
+	std::map<unsigned  int, std::list<reply_t> >::iterator it=reply_window_.find(clt_nonce);
+
+    std::list<reply_t>::iterator lit;
+
+	int found=0;
+    //scan all request of clt_nonce
+    for(lit=it->second.begin();lit!=it->second.end();lit++)
+    {
+
+        if(lit->xid<=xid_rep)
+        {
+			free(lit->buf);
+            it->second.erase(lit);
+        }
+
+        if(xid==lit->xid)
+        {
+			found=1;
+            if(lit->cb_present)
+			{
+				ret=DONE;
+				//if done, it should return the result
+				*b=lit->buf;
+				*sz=lit->sz;
+			}
+            else
+                ret=INPROGRESS;
+        }
+    }
+
+	//not found means not forgot, not done, not in progress=>new
+    if(!found)
+    {
+        //new
+        it->second.push_back(reply_t(xid));
+        ret=NEW;
+    }
+
         // You fill this in for Lab 1.
-	return NEW;
+	return ret;
 }
 
 // rpcs::dispatch calls add_reply when it is sending a reply to an RPC,
@@ -677,6 +746,22 @@ rpcs::add_reply(unsigned int clt_nonce, unsigned int xid,
 {
 	ScopedLock rwl(&reply_window_m_);
         // You fill this in for Lab 1.
+	std::map<unsigned int, std::list<reply_t> >::iterator it;
+	it=reply_window_.find(clt_nonce);
+	if(it!=reply_window_.end())
+	{
+		std::list<reply_t>::iterator lit;
+		//find xid node
+		for(lit=it->second.begin();lit!=it->second.end();lit++)
+			if(lit->xid==xid) break;
+
+		if(lit!=it->second.end())
+		{
+			lit->cb_present=true;
+			lit->buf=b;
+			lit->sz=sz;
+		}
+	}
 }
 
 void
